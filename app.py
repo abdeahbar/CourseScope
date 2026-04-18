@@ -123,7 +123,7 @@ if st.button("Analyze Course", type="primary"):
     else:
         with st.spinner(f"Analyzing course with {provider_label}..."):
             try:
-                model = selected_model.strip() if provider == "ollama" else None
+                model = selected_model.strip()
                 st.session_state["result"] = analyze_course(markdown_text, provider, model)
                 st.session_state["error"] = ""
             except RuntimeError as exc:

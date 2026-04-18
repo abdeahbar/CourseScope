@@ -13,6 +13,8 @@ Rules:
 - Use simple student-friendly language.
 - Return only JSON.
 - Never add explanation outside the JSON.
+- Never add JSON comments, placeholder text, Markdown fences, or trailing commas.
+- Every object in every list must include all keys shown in the structure.
 - Use this exact JSON structure and keep all keys present:
 
 {

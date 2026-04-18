@@ -13,6 +13,102 @@ def clean_markdown(text: str) -> str:
     return normalized.strip()
 
 
+def _strip_json_comments(text: str) -> str:
+    """Remove // and /* */ comments without touching quoted strings."""
+    result = []
+    in_string = False
+    escaped = False
+    index = 0
+
+    while index < len(text):
+        char = text[index]
+        next_char = text[index + 1] if index + 1 < len(text) else ""
+
+        if in_string:
+            result.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+
+        if char == '"':
+            in_string = True
+            result.append(char)
+            index += 1
+            continue
+
+        if char == "/" and next_char == "/":
+            index += 2
+            while index < len(text) and text[index] not in "\r\n":
+                index += 1
+            continue
+
+        if char == "/" and next_char == "*":
+            index += 2
+            while index + 1 < len(text) and not (text[index] == "*" and text[index + 1] == "/"):
+                index += 1
+            index += 2
+            continue
+
+        result.append(char)
+        index += 1
+
+    return "".join(result)
+
+
+def _remove_trailing_json_commas(text: str) -> str:
+    """Remove trailing commas before } or ] without touching quoted strings."""
+    result = []
+    in_string = False
+    escaped = False
+    index = 0
+
+    while index < len(text):
+        char = text[index]
+
+        if in_string:
+            result.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+
+        if char == '"':
+            in_string = True
+            result.append(char)
+            index += 1
+            continue
+
+        if char == ",":
+            lookahead = index + 1
+            while lookahead < len(text) and text[lookahead].isspace():
+                lookahead += 1
+            if lookahead < len(text) and text[lookahead] in "}]":
+                index += 1
+                continue
+
+        result.append(char)
+        index += 1
+
+    return "".join(result)
+
+
+def _parse_json_object(text: str) -> dict:
+    parsed = json.loads(text)
+    if not isinstance(parsed, dict):
+        raise ValueError("The model returned JSON, but it was not an object.")
+
+    return parsed
+
+
 def safe_json_parse(raw_text: str) -> dict:
     """
     Parse JSON from model output.
@@ -29,18 +125,23 @@ def safe_json_parse(raw_text: str) -> dict:
         text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
         text = re.sub(r"```$", "", text).strip()
 
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-        if not match:
-            raise ValueError("The model response did not contain a JSON object.")
-        parsed = json.loads(match.group(0))
+    candidates = [text]
+    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    if match:
+        candidates.append(match.group(0))
 
-    if not isinstance(parsed, dict):
-        raise ValueError("The model returned JSON, but it was not an object.")
+    last_error: Exception | None = None
+    for candidate in candidates:
+        for parser_input in (
+            candidate,
+            _remove_trailing_json_commas(_strip_json_comments(candidate)).strip(),
+        ):
+            try:
+                return _parse_json_object(parser_input)
+            except (ValueError, json.JSONDecodeError) as exc:
+                last_error = exc
 
-    return parsed
+    raise ValueError("The model response did not contain a valid JSON object.") from last_error
 
 
 def _format_bool(value: Any) -> str:

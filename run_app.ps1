@@ -1,3 +1,11 @@
+param (
+    [switch]$StartLlamaCpp,
+    [string]$LlamaServerPath = ".\llama.cpp\llama-server.exe",
+    [string]$LlamaModelPath = "",
+    [int]$LlamaPort = 8080,
+    [switch]$SkipOllama
+)
+
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = $PSScriptRoot
@@ -5,10 +13,10 @@ $VenvPython = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
 $AppFile = Join-Path $ProjectRoot "app.py"
 $OllamaApiUrl = "http://127.0.0.1:11434/api/tags"
 $OllamaWaitSeconds = 90
-$LLAMA_SERVER_PATH = ".\llama.cpp\llama-server.exe"
-$LLAMA_MODEL_PATH = ".\models\model.gguf"
-$LLAMA_PORT = 8080
-$START_LLAMA_CPP = $false
+$LLAMA_SERVER_PATH = $LlamaServerPath
+$LLAMA_MODEL_PATH = $LlamaModelPath
+$LLAMA_PORT = $LlamaPort
+$START_LLAMA_CPP = $StartLlamaCpp.IsPresent
 $LlamaCppWaitSeconds = 60
 $LlamaCppApiUrl = "http://127.0.0.1:$LLAMA_PORT/v1/models"
 $OutputPath = Join-Path $ProjectRoot "output"
@@ -120,6 +128,28 @@ function Wait-LlamaCppApi {
     return $false
 }
 
+function Find-DefaultLlamaModel {
+    $ModelsPath = Join-Path $ProjectRoot "models"
+
+    if (-not (Test-Path $ModelsPath)) {
+        return $null
+    }
+
+    return Get-ChildItem -Path $ModelsPath -Filter "*.gguf" -File |
+        Sort-Object Name |
+        Select-Object -First 1
+}
+
+function Set-CourseScopeLlamaCppEnvironment {
+    param (
+        [int]$Port,
+        [string]$ModelAlias
+    )
+
+    $env:LLAMACPP_CHAT_URL = "http://127.0.0.1:$Port/v1/chat/completions"
+    $env:LLAMACPP_MODEL = $ModelAlias
+}
+
 if (-not (Test-Path $VenvPython)) {
     Write-Error "Virtual environment not found. Run .\setup_venv.ps1 first."
 }
@@ -129,50 +159,71 @@ if (-not (Test-Path $AppFile)) {
 }
 
 Set-CourseScopeOllamaEnvironment
-$OllamaCommand = Get-Command ollama -ErrorAction SilentlyContinue
 
-if (-not $OllamaCommand) {
-    Write-Warning "Ollama was not found in PATH. Install Ollama or start it manually."
-}
-else {
-    Write-Host "Restarting Ollama with CourseScope settings..."
-    Stop-OllamaProcesses
-    New-Item -ItemType Directory -Force -Path $OutputPath | Out-Null
+if (-not $SkipOllama) {
+    $OllamaCommand = Get-Command ollama -ErrorAction SilentlyContinue
 
-    $OllamaProcess = Start-Process `
-        -FilePath $OllamaCommand.Source `
-        -ArgumentList "serve" `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $OllamaOutLog `
-        -RedirectStandardError $OllamaErrLog `
-        -PassThru
-
-    Write-Host "Started Ollama process $($OllamaProcess.Id). Waiting for the local API..."
-
-    if (Wait-OllamaApi -TimeoutSeconds $OllamaWaitSeconds) {
-        Write-Host "Ollama is running with OLLAMA_CONTEXT_LENGTH=$env:OLLAMA_CONTEXT_LENGTH."
+    if (-not $OllamaCommand) {
+        Write-Warning "Ollama was not found in PATH. Install Ollama or start it manually."
     }
     else {
-        Write-Warning "Ollama did not respond within $OllamaWaitSeconds seconds."
-        Write-Warning "Streamlit will still start. In the app, click Refresh models after Ollama is ready."
-        Write-Warning "Ollama logs: $OllamaOutLog and $OllamaErrLog"
+        Write-Host "Restarting Ollama with CourseScope settings..."
+        Stop-OllamaProcesses
+        New-Item -ItemType Directory -Force -Path $OutputPath | Out-Null
+
+        $OllamaProcess = Start-Process `
+            -FilePath $OllamaCommand.Source `
+            -ArgumentList "serve" `
+            -WindowStyle Hidden `
+            -RedirectStandardOutput $OllamaOutLog `
+            -RedirectStandardError $OllamaErrLog `
+            -PassThru
+
+        Write-Host "Started Ollama process $($OllamaProcess.Id). Waiting for the local API..."
+
+        if (Wait-OllamaApi -TimeoutSeconds $OllamaWaitSeconds) {
+            Write-Host "Ollama is running with OLLAMA_CONTEXT_LENGTH=$env:OLLAMA_CONTEXT_LENGTH."
+        }
+        else {
+            Write-Warning "Ollama did not respond within $OllamaWaitSeconds seconds."
+            Write-Warning "Streamlit will still start. In the app, click Refresh models after Ollama is ready."
+            Write-Warning "Ollama logs: $OllamaOutLog and $OllamaErrLog"
+        }
     }
+}
+else {
+    Write-Host "Skipping Ollama startup."
 }
 
 if ($START_LLAMA_CPP) {
     $LlamaServerFullPath = Resolve-ProjectPath $LLAMA_SERVER_PATH
-    $LlamaModelFullPath = Resolve-ProjectPath $LLAMA_MODEL_PATH
+    $LlamaModelFullPath = $null
+
+    if ([string]::IsNullOrWhiteSpace($LLAMA_MODEL_PATH)) {
+        $DefaultModel = Find-DefaultLlamaModel
+        if ($DefaultModel) {
+            $LlamaModelFullPath = $DefaultModel.FullName
+            Write-Host "Using GGUF model: $LlamaModelFullPath"
+        }
+    }
+    else {
+        $LlamaModelFullPath = Resolve-ProjectPath $LLAMA_MODEL_PATH
+    }
 
     if (Test-LlamaCppApi) {
         Write-Host "llama.cpp server is already running on port $LLAMA_PORT."
+        Set-CourseScopeLlamaCppEnvironment -Port $LLAMA_PORT -ModelAlias "local-model"
     }
     elseif (-not (Test-Path $LlamaServerFullPath)) {
         Write-Warning "llama.cpp server was not found at: $LlamaServerFullPath"
     }
-    elseif (-not (Test-Path $LlamaModelFullPath)) {
-        Write-Warning "GGUF model was not found at: $LlamaModelFullPath"
+    elseif (-not $LlamaModelFullPath -or -not (Test-Path $LlamaModelFullPath)) {
+        Write-Warning "No GGUF model was found. Add one to .\models or pass -LlamaModelPath .\models\your-model.gguf."
     }
     else {
+        $LlamaModelAlias = [System.IO.Path]::GetFileName($LlamaModelFullPath)
+        Set-CourseScopeLlamaCppEnvironment -Port $LLAMA_PORT -ModelAlias $LlamaModelAlias
+
         Write-Host "Starting llama.cpp server..."
         New-Item -ItemType Directory -Force -Path $OutputPath | Out-Null
 
@@ -180,9 +231,10 @@ if ($START_LLAMA_CPP) {
             "-m", $LlamaModelFullPath,
             "--host", "127.0.0.1",
             "--port", "$LLAMA_PORT",
+            "--alias", $LlamaModelAlias,
             "-c", "4096",
             "-ngl", "99",
-            "--flash-attn"
+            "--flash-attn", "auto"
         )
 
         $LlamaProcess = Start-Process `

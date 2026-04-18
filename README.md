@@ -78,6 +78,26 @@ http://localhost:11434/api/tags
 
 ## Use llama.cpp
 
+The llama.cpp Windows zip can be installed into this project with:
+
+```powershell
+.\setup_llamacpp.ps1
+```
+
+By default, the script looks for the zip one folder above this project:
+
+```text
+D:\CourseScope\llama-b8838-bin-win-cuda-13.1-x64.zip
+```
+
+The runtime is extracted to:
+
+```text
+llama.cpp/
+```
+
+This folder is ignored by git because it contains generated binaries.
+
 llama.cpp uses local `.gguf` files. Put GGUF models in:
 
 ```text
@@ -95,7 +115,7 @@ GGUF model files are ignored by git.
 Start llama.cpp server manually:
 
 ```powershell
-.\llama-server.exe -m .\models\qwen2.5-7b-instruct-q4_k_m.gguf --host 127.0.0.1 --port 8080 -c 4096 -ngl 99 --flash-attn
+.\llama.cpp\llama-server.exe -m .\models\qwen2.5-7b-instruct-q4_k_m.gguf --host 127.0.0.1 --port 8080 --alias qwen2.5-7b-instruct-q4_k_m.gguf -c 4096 -ngl 99 --flash-attn auto
 ```
 
 In the app, select:
@@ -108,6 +128,18 @@ CourseScope lists `.gguf` files from the `models/` folder and sends requests to:
 
 ```text
 http://127.0.0.1:8080/v1/chat/completions
+```
+
+You can smoke-test the llama.cpp runtime and API with either your own model:
+
+```powershell
+.\test_llamacpp.ps1 -ModelPath .\models\qwen2.5-7b-instruct-q4_k_m.gguf
+```
+
+or a tiny throwaway model downloaded into `.cache/`:
+
+```powershell
+.\test_llamacpp.ps1 -DownloadTinyModel
 ```
 
 ## Run the Streamlit app
@@ -130,14 +162,17 @@ overrides, starts Ollama with CourseScope settings, then starts the Streamlit
 app. It sets a local Ollama context length of `4096` for this app so large
 global Ollama settings do not make the MVP slow or memory-heavy.
 
-The script can also start llama.cpp, but it is disabled by default. To enable
-it, edit the variables at the top of `run_app.ps1`:
+The script can also start llama.cpp. It is disabled by default. To start only
+llama.cpp and Streamlit:
 
 ```powershell
-$LLAMA_SERVER_PATH = ".\llama.cpp\llama-server.exe"
-$LLAMA_MODEL_PATH = ".\models\model.gguf"
-$LLAMA_PORT = 8080
-$START_LLAMA_CPP = $true
+.\run_app.ps1 -SkipOllama -StartLlamaCpp
+```
+
+If there are multiple GGUF files in `models/`, pass the one you want:
+
+```powershell
+.\run_app.ps1 -SkipOllama -StartLlamaCpp -LlamaModelPath .\models\qwen2.5-7b-instruct-q4_k_m.gguf
 ```
 
 ## Performance notes

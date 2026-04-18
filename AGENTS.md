@@ -6,7 +6,7 @@ CourseScope
 
 ## Project Purpose
 
-CourseScope is a small local AI tool that analyzes Markdown course files and extracts structured educational metadata using a local Ollama model.
+CourseScope is a small local AI tool that analyzes Markdown course files and extracts structured educational metadata using a local Ollama model or a local llama.cpp server.
 
 It extracts:
 
@@ -39,10 +39,15 @@ Use:
 - Streamlit
 - requests
 - Ollama local API
+- llama.cpp OpenAI-compatible local API
 
 Ollama endpoint:
 
 http://localhost:11434/api/generate
+
+llama.cpp endpoint:
+
+http://127.0.0.1:8080/v1/chat/completions
 
 ## Project Structure
 

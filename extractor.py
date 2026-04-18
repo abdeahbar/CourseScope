@@ -1,4 +1,5 @@
 import json
+import os
 
 import requests
 
@@ -8,7 +9,98 @@ from utils import clean_markdown, safe_json_parse
 
 OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
 OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
-LLAMACPP_CHAT_URL = "http://127.0.0.1:8080/v1/chat/completions"
+LLAMACPP_CHAT_URL = os.getenv(
+    "LLAMACPP_CHAT_URL",
+    "http://127.0.0.1:8080/v1/chat/completions",
+)
+LLAMACPP_MODEL = os.getenv("LLAMACPP_MODEL", "local-model")
+ALLOWED_LEVELS = {"basic", "intermediate", "advanced"}
+ALLOWED_CATEGORIES = {"knowledge", "skill", "method", "problem_solving", "communication"}
+ALLOWED_CONFIDENCE = {"low", "medium", "high"}
+
+
+def _as_string(value) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _as_bool(value) -> bool:
+    return value if isinstance(value, bool) else False
+
+
+def _as_list(value) -> list:
+    return value if isinstance(value, list) else []
+
+
+def normalize_extraction_result(result: dict) -> dict:
+    """Keep local model output in the exact JSON shape CourseScope expects."""
+    prerequisites = []
+    for item in _as_list(result.get("prerequisites")):
+        if not isinstance(item, dict):
+            continue
+        level = _as_string(item.get("level")).lower()
+        prerequisites.append(
+            {
+                "name": _as_string(item.get("name")),
+                "reason": _as_string(item.get("reason")),
+                "level": level if level in ALLOWED_LEVELS else "basic",
+                "is_explicit": _as_bool(item.get("is_explicit")),
+            }
+        )
+
+    objectives = []
+    for item in _as_list(result.get("objectives")):
+        if not isinstance(item, dict):
+            continue
+        objectives.append(
+            {
+                "objective": _as_string(item.get("objective")),
+                "is_explicit": _as_bool(item.get("is_explicit")),
+            }
+        )
+
+    expected_results = []
+    for item in _as_list(result.get("expected_results")):
+        if not isinstance(item, dict):
+            continue
+        expected_results.append(
+            {
+                "result": _as_string(item.get("result")),
+                "is_explicit": _as_bool(item.get("is_explicit")),
+            }
+        )
+
+    competencies = []
+    for item in _as_list(result.get("competencies")):
+        if not isinstance(item, dict):
+            continue
+        category = _as_string(item.get("category")).lower()
+        competency = _as_string(item.get("competency"))
+        if category not in ALLOWED_CATEGORIES:
+            category = competency.lower() if competency.lower() in ALLOWED_CATEGORIES else "knowledge"
+        competencies.append(
+            {
+                "competency": competency,
+                "category": category,
+                "is_explicit": _as_bool(item.get("is_explicit")),
+            }
+        )
+
+    missing_information = [
+        _as_string(item)
+        for item in _as_list(result.get("missing_information"))
+        if _as_string(item)
+    ]
+    confidence = _as_string(result.get("confidence")).lower()
+
+    return {
+        "course_title": _as_string(result.get("course_title")),
+        "prerequisites": prerequisites,
+        "objectives": objectives,
+        "expected_results": expected_results,
+        "competencies": competencies,
+        "missing_information": missing_information,
+        "confidence": confidence if confidence in ALLOWED_CONFIDENCE else "low",
+    }
 
 
 def list_ollama_models() -> list[str]:
@@ -113,7 +205,7 @@ def analyze_course_with_ollama(markdown_text: str, model: str) -> dict:
     raw_model_output = ollama_data.get("response", "")
 
     try:
-        return safe_json_parse(raw_model_output)
+        return normalize_extraction_result(safe_json_parse(raw_model_output))
     except (ValueError, json.JSONDecodeError) as exc:
         raise RuntimeError(
             "The model returned invalid JSON.\n\nRaw model output:\n"
@@ -121,7 +213,7 @@ def analyze_course_with_ollama(markdown_text: str, model: str) -> dict:
         ) from exc
 
 
-def analyze_course_with_llamacpp(markdown_text: str) -> dict:
+def analyze_course_with_llamacpp(markdown_text: str, model: str | None = None) -> dict:
     """
     Analyze a Markdown course with a running llama.cpp server.
 
@@ -133,8 +225,9 @@ def analyze_course_with_llamacpp(markdown_text: str) -> dict:
         raise RuntimeError("No Markdown content was provided.")
 
     prompt = build_extraction_prompt(cleaned_text)
+    api_model = model or LLAMACPP_MODEL
     payload = {
-        "model": "local-model",
+        "model": api_model,
         "messages": [
             {
                 "role": "system",
@@ -175,7 +268,7 @@ def analyze_course_with_llamacpp(markdown_text: str) -> dict:
         raise RuntimeError(f"llama.cpp returned invalid API JSON: {response.text}") from exc
 
     try:
-        return safe_json_parse(raw_model_output)
+        return normalize_extraction_result(safe_json_parse(raw_model_output))
     except (ValueError, json.JSONDecodeError):
         return _invalid_json_result("llama.cpp", raw_model_output)
 
@@ -187,6 +280,6 @@ def analyze_course(markdown_text: str, provider: str, model: str | None = None) 
         return analyze_course_with_ollama(markdown_text, model)
 
     if provider == "llamacpp":
-        return analyze_course_with_llamacpp(markdown_text)
+        return analyze_course_with_llamacpp(markdown_text, model)
 
     raise RuntimeError(f"Unknown AI provider: {provider}")
