@@ -7,6 +7,39 @@ from utils import clean_markdown, safe_json_parse
 
 
 OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
+OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
+
+
+def list_ollama_models() -> list[str]:
+    """Return the names of locally installed Ollama models."""
+    try:
+        response = requests.get(OLLAMA_TAGS_URL, timeout=5)
+    except requests.exceptions.ConnectionError as exc:
+        raise RuntimeError(
+            "Ollama is not running. Start Ollama to load the model list."
+        ) from exc
+    except requests.exceptions.Timeout as exc:
+        raise RuntimeError(
+            "Ollama took too long to return the model list."
+        ) from exc
+    except requests.exceptions.RequestException as exc:
+        raise RuntimeError(f"Could not load Ollama models: {exc}") from exc
+
+    if not response.ok:
+        raise RuntimeError(f"Ollama returned an error while loading models: {response.text}")
+
+    try:
+        data = response.json()
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Ollama returned invalid model list JSON: {response.text}") from exc
+
+    model_names = []
+    for item in data.get("models", []):
+        name = item.get("name") or item.get("model")
+        if name:
+            model_names.append(name)
+
+    return sorted(set(model_names), key=str.lower)
 
 
 def analyze_course(markdown_text: str, model: str) -> dict:
@@ -27,7 +60,10 @@ def analyze_course(markdown_text: str, model: str) -> dict:
         "format": "json",
         "stream": False,
         "options": {
-            "temperature": 0.1
+            "temperature": 0.1,
+            # Keep the MVP responsive and avoid inheriting a huge global Ollama context.
+            "num_ctx": 4096,
+            "num_predict": 1200,
         },
     }
 

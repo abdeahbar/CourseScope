@@ -23,7 +23,7 @@ Ollama model is installed, the app can work offline.
 
 - Python 3.10+
 - Ollama installed and running
-- A local Ollama model, for example `qwen2.5:7b`
+- A local Ollama model, for example `qwen2.5:3b-instruct`
 
 ## Install dependencies
 
@@ -44,13 +44,13 @@ ollama serve
 
 ## Pull a model
 
-Install the default model used by CourseScope:
+Install the recommended MVP model used by CourseScope:
 
 ```bash
-ollama pull qwen2.5:7b
+ollama pull qwen2.5:3b-instruct
 ```
 
-You can use another local Ollama model by entering its name in the app.
+You can use another local Ollama model by selecting it in the app.
 
 ## Run the Streamlit app
 
@@ -60,11 +60,53 @@ streamlit run app.py
 
 Then open the local Streamlit URL shown in your terminal.
 
+On Windows, you can also use the included PowerShell scripts:
+
+```powershell
+.\setup_venv.ps1
+.\run_app.ps1
+```
+
+`run_app.ps1` stops existing Ollama processes, clears known bad local
+overrides, starts Ollama with CourseScope settings, then starts the Streamlit
+app. It sets a local Ollama context length of `4096` for this app so large
+global Ollama settings do not make the MVP slow or memory-heavy.
+
+## Performance notes
+
+For faster local analysis, start with a smaller instruction model such as
+`qwen2.5:3b-instruct`, `llama3.2:3b`, or `qwen2.5:7b-instruct`.
+
+The app explicitly sends these Ollama options:
+
+```json
+{
+  "num_ctx": 4096,
+  "num_predict": 1200,
+  "temperature": 0.1
+}
+```
+
+This prevents CourseScope from inheriting very large global Ollama context
+settings.
+
+To check whether Ollama is using the GPU, run:
+
+```powershell
+ollama ps
+```
+
+If the `PROCESSOR` column shows `100% CPU`, check the Ollama server log at:
+
+```text
+%LOCALAPPDATA%\Ollama\server.log
+```
+
 ## How to use
 
 1. Upload a Markdown course file, or paste course content into the text area.
 2. Edit the Markdown if needed.
-3. Enter the Ollama model name.
+3. Select one of your locally installed Ollama models.
 4. Click **Analyze Course**.
 5. Review the structured result and raw JSON.
 6. Download the result as JSON or as a Markdown report.

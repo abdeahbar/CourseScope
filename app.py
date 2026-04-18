@@ -2,7 +2,7 @@ import json
 
 import streamlit as st
 
-from extractor import analyze_course
+from extractor import analyze_course, list_ollama_models
 from utils import clean_markdown, result_to_markdown
 
 
@@ -25,13 +25,53 @@ def display_items(items: list, empty_message: str, render_item) -> None:
         render_item(item)
 
 
+def refresh_model_list() -> None:
+    """Load local Ollama models into Streamlit session state."""
+    try:
+        st.session_state["ollama_models"] = list_ollama_models()
+        st.session_state["model_list_error"] = ""
+    except RuntimeError as exc:
+        st.session_state["ollama_models"] = []
+        st.session_state["model_list_error"] = str(exc)
+
+
 st.title("CourseScope")
 st.write(
     "A local AI tool that extracts prerequisites, learning objectives, expected "
     "results, and competencies from one Markdown course file."
 )
 
-model_name = st.text_input("Ollama model name", value="qwen2.5:7b")
+if "ollama_models" not in st.session_state or st.session_state.get("model_list_error"):
+    refresh_model_list()
+
+model_col, refresh_col = st.columns([4, 1])
+with refresh_col:
+    st.write("")
+    if st.button("Refresh models"):
+        refresh_model_list()
+
+with model_col:
+    installed_models = st.session_state.get("ollama_models", [])
+    model_options = installed_models or ["qwen2.5:3b-instruct"]
+    preferred_models = [
+        "qwen2.5:3b-instruct",
+        "llama3.2:3b",
+        "qwen2.5:7b-instruct",
+        "qwen2.5:7b",
+    ]
+    default_model = next((model for model in preferred_models if model in model_options), model_options[0])
+    default_index = model_options.index(default_model)
+    model_name = st.selectbox(
+        "Ollama model",
+        options=model_options,
+        index=default_index,
+    )
+
+if st.session_state.get("model_list_error"):
+    st.warning(st.session_state["model_list_error"])
+elif not st.session_state.get("ollama_models"):
+    st.info("No local Ollama models were found. Install one with: ollama pull qwen2.5:3b-instruct")
+
 uploaded_file = st.file_uploader("Upload a Markdown course file", type=["md", "markdown", "txt"])
 
 uploaded_text = read_uploaded_markdown(uploaded_file)
@@ -51,7 +91,7 @@ if st.button("Analyze Course", type="primary"):
     if not clean_markdown(markdown_text):
         st.error("No Markdown is provided. Upload a file or paste course content first.")
     elif not model_name.strip():
-        st.error("Enter an Ollama model name.")
+        st.error("Select an Ollama model.")
     else:
         with st.spinner("Analyzing course with local Ollama model..."):
             try:
