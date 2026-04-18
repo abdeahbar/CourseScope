@@ -1,63 +1,128 @@
 # CourseScope
 
-CourseScope is a small local AI tool that analyzes Markdown course files and extracts structured educational metadata.
+CourseScope is a small local AI tool that reads one Markdown course file and
+extracts structured educational metadata with a local Ollama model.
 
 It extracts:
 
-- prerequisites
-- learning objectives
-- expected results
-- competencies
+- Prerequisites needed before studying the course
+- Learning objectives of the course
+- Expected results after studying the course
+- Competencies developed by the course
 
-The tool uses a local Ollama model and a simple Streamlit UI.
+The app runs locally with Streamlit and calls the Ollama local API at:
 
-## Features
+```text
+http://localhost:11434/api/generate
+```
 
-- Upload or paste a Markdown course
-- Analyze it using a local Ollama model
-- Extract structured course metadata
-- Export results as JSON
-- Export results as Markdown
+No database, authentication, Docker, or external API is required. After the
+Ollama model is installed, the app can work offline.
 
-## Tech Stack
+## Requirements
 
-- Python
-- Streamlit
-- Ollama
-- requests
+- Python 3.10+
+- Ollama installed and running
+- A local Ollama model, for example `qwen2.5:7b`
 
-## Install
+## Install dependencies
+
+From this folder, run:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Pull a local model
-
-```bash
-ollama pull qwen2.5:7b
-```
-
 ## Run Ollama
+
+Start Ollama on your machine. In most installations, Ollama runs automatically.
+You can also start it manually:
 
 ```bash
 ollama serve
 ```
 
-## Run CourseScope
+## Pull a model
+
+Install the default model used by CourseScope:
+
+```bash
+ollama pull qwen2.5:7b
+```
+
+You can use another local Ollama model by entering its name in the app.
+
+## Run the Streamlit app
 
 ```bash
 streamlit run app.py
 ```
 
-## Default model
+Then open the local Streamlit URL shown in your terminal.
 
-```txt
-qwen2.5:7b
+## How to use
+
+1. Upload a Markdown course file, or paste course content into the text area.
+2. Edit the Markdown if needed.
+3. Enter the Ollama model name.
+4. Click **Analyze Course**.
+5. Review the structured result and raw JSON.
+6. Download the result as JSON or as a Markdown report.
+
+## Sample file
+
+A sample course is included at:
+
+```text
+input/sample-course.md
 ```
 
-## Project Status
+## Expected JSON output
 
-MVP under development.
+The model is instructed to return this structure:
 
-The goal is to keep this project simple, local-first, and easy to understand.
+```json
+{
+  "course_title": "",
+  "prerequisites": [
+    {
+      "name": "",
+      "reason": "",
+      "level": "basic | intermediate | advanced",
+      "is_explicit": true
+    }
+  ],
+  "objectives": [
+    {
+      "objective": "",
+      "is_explicit": true
+    }
+  ],
+  "expected_results": [
+    {
+      "result": "",
+      "is_explicit": true
+    }
+  ],
+  "competencies": [
+    {
+      "competency": "",
+      "category": "knowledge | skill | method | problem_solving | communication",
+      "is_explicit": true
+    }
+  ],
+  "missing_information": [],
+  "confidence": "low | medium | high"
+}
+```
+
+## Error handling
+
+The app shows clear errors when:
+
+- No Markdown is provided
+- Ollama is not running
+- The selected model is not installed
+- The model returns invalid JSON
+
+If JSON parsing fails, the raw model output is shown to help debugging.

@@ -130,7 +130,7 @@ if result:
     markdown_report = result_to_markdown(result)
 
     st.subheader("Raw JSON")
-    st.json(result)
+    st.code(raw_json, language="json")
 
     col1, col2 = st.columns(2)
     with col1:
