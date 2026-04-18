@@ -39,6 +39,10 @@ Thumbs.db
 output/*
 !output/.gitkeep
 
+# Local llama.cpp models
+models/*.gguf
+models/*.bin
+
 # Input files, optional local test data
 input/*
 !input/sample-course.md

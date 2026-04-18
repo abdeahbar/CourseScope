@@ -1,7 +1,7 @@
 # CourseScope
 
 CourseScope is a small local AI tool that reads one Markdown course file and
-extracts structured educational metadata with a local Ollama model.
+extracts structured educational metadata with a local AI model.
 
 It extracts:
 
@@ -10,20 +10,31 @@ It extracts:
 - Expected results after studying the course
 - Competencies developed by the course
 
-The app runs locally with Streamlit and calls the Ollama local API at:
+The app runs locally with Streamlit and supports two local AI providers:
+
+- Ollama
+- llama.cpp server
+
+Ollama uses model names and calls:
 
 ```text
 http://localhost:11434/api/generate
 ```
 
+llama.cpp uses a loaded `.gguf` model and calls:
+
+```text
+http://127.0.0.1:8080/v1/chat/completions
+```
+
 No database, authentication, Docker, or external API is required. After the
-Ollama model is installed, the app can work offline.
+local model is installed, the app can work offline.
 
 ## Requirements
 
 - Python 3.10+
-- Ollama installed and running
-- A local Ollama model, for example `qwen2.5:3b-instruct`
+- Ollama installed and running, or a llama.cpp server running locally
+- A local Ollama model name or a local `.gguf` model file
 
 ## Install dependencies
 
@@ -33,10 +44,11 @@ From this folder, run:
 pip install -r requirements.txt
 ```
 
-## Run Ollama
+## Use Ollama
 
-Start Ollama on your machine. In most installations, Ollama runs automatically.
-You can also start it manually:
+Ollama uses model names such as `qwen2.5:3b-instruct`. Start Ollama on your
+machine. In most installations, Ollama runs automatically. You can also start it
+manually:
 
 ```bash
 ollama serve
@@ -51,6 +63,52 @@ ollama pull qwen2.5:3b-instruct
 ```
 
 You can use another local Ollama model by selecting it in the app.
+
+In the app, select:
+
+```text
+AI provider: Ollama
+```
+
+CourseScope will load installed Ollama models from:
+
+```text
+http://localhost:11434/api/tags
+```
+
+## Use llama.cpp
+
+llama.cpp uses local `.gguf` files. Put GGUF models in:
+
+```text
+models/
+```
+
+For example:
+
+```text
+models/qwen2.5-7b-instruct-q4_k_m.gguf
+```
+
+GGUF model files are ignored by git.
+
+Start llama.cpp server manually:
+
+```powershell
+.\llama-server.exe -m .\models\qwen2.5-7b-instruct-q4_k_m.gguf --host 127.0.0.1 --port 8080 -c 4096 -ngl 99 --flash-attn
+```
+
+In the app, select:
+
+```text
+AI provider: llama.cpp
+```
+
+CourseScope lists `.gguf` files from the `models/` folder and sends requests to:
+
+```text
+http://127.0.0.1:8080/v1/chat/completions
+```
 
 ## Run the Streamlit app
 
@@ -71,6 +129,16 @@ On Windows, you can also use the included PowerShell scripts:
 overrides, starts Ollama with CourseScope settings, then starts the Streamlit
 app. It sets a local Ollama context length of `4096` for this app so large
 global Ollama settings do not make the MVP slow or memory-heavy.
+
+The script can also start llama.cpp, but it is disabled by default. To enable
+it, edit the variables at the top of `run_app.ps1`:
+
+```powershell
+$LLAMA_SERVER_PATH = ".\llama.cpp\llama-server.exe"
+$LLAMA_MODEL_PATH = ".\models\model.gguf"
+$LLAMA_PORT = 8080
+$START_LLAMA_CPP = $true
+```
 
 ## Performance notes
 

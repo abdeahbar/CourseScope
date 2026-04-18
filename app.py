@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import streamlit as st
 
@@ -7,6 +8,7 @@ from utils import clean_markdown, result_to_markdown
 
 
 st.set_page_config(page_title="CourseScope", layout="wide")
+MODELS_DIR = Path(__file__).parent / "models"
 
 
 def read_uploaded_markdown(uploaded_file) -> str:
@@ -25,6 +27,14 @@ def display_items(items: list, empty_message: str, render_item) -> None:
         render_item(item)
 
 
+def list_gguf_models() -> list[str]:
+    """Return local GGUF model filenames from the models folder."""
+    if not MODELS_DIR.exists():
+        return []
+
+    return sorted(path.name for path in MODELS_DIR.iterdir() if path.is_file() and path.suffix.lower() == ".gguf")
+
+
 def refresh_model_list() -> None:
     """Load local Ollama models into Streamlit session state."""
     try:
@@ -41,36 +51,52 @@ st.write(
     "results, and competencies from one Markdown course file."
 )
 
-if "ollama_models" not in st.session_state or st.session_state.get("model_list_error"):
+provider_label = st.selectbox("AI provider", options=["Ollama", "llama.cpp"])
+provider = "ollama" if provider_label == "Ollama" else "llamacpp"
+
+if provider == "ollama" and (
+    "ollama_models" not in st.session_state or st.session_state.get("model_list_error")
+):
     refresh_model_list()
 
 model_col, refresh_col = st.columns([4, 1])
 with refresh_col:
     st.write("")
     if st.button("Refresh models"):
-        refresh_model_list()
+        if provider == "ollama":
+            refresh_model_list()
 
 with model_col:
-    installed_models = st.session_state.get("ollama_models", [])
-    model_options = installed_models or ["qwen2.5:3b-instruct"]
-    preferred_models = [
-        "qwen2.5:3b-instruct",
-        "llama3.2:3b",
-        "qwen2.5:7b-instruct",
-        "qwen2.5:7b",
-    ]
-    default_model = next((model for model in preferred_models if model in model_options), model_options[0])
-    default_index = model_options.index(default_model)
-    model_name = st.selectbox(
-        "Ollama model",
-        options=model_options,
-        index=default_index,
-    )
+    if provider == "ollama":
+        installed_models = st.session_state.get("ollama_models", [])
+        model_options = installed_models or ["qwen2.5:3b-instruct"]
+        preferred_models = [
+            "qwen2.5:3b-instruct",
+            "llama3.2:3b",
+            "qwen2.5:7b-instruct",
+            "qwen2.5:7b",
+        ]
+        default_model = next((model for model in preferred_models if model in model_options), model_options[0])
+        default_index = model_options.index(default_model)
+        selected_model = st.selectbox(
+            "Ollama model",
+            options=model_options,
+            index=default_index,
+        )
+    else:
+        gguf_models = list_gguf_models()
+        if gguf_models:
+            selected_model = st.selectbox("GGUF model", options=gguf_models, index=0)
+        else:
+            st.selectbox("GGUF model", options=["No GGUF models found"], index=0, disabled=True)
+            selected_model = ""
 
-if st.session_state.get("model_list_error"):
+if provider == "ollama" and st.session_state.get("model_list_error"):
     st.warning(st.session_state["model_list_error"])
-elif not st.session_state.get("ollama_models"):
+elif provider == "ollama" and not st.session_state.get("ollama_models"):
     st.info("No local Ollama models were found. Install one with: ollama pull qwen2.5:3b-instruct")
+elif provider == "llamacpp" and not list_gguf_models():
+    st.warning("No GGUF models found. Add .gguf files to the models folder.")
 
 uploaded_file = st.file_uploader("Upload a Markdown course file", type=["md", "markdown", "txt"])
 
@@ -90,12 +116,15 @@ st.session_state["markdown_text"] = markdown_text
 if st.button("Analyze Course", type="primary"):
     if not clean_markdown(markdown_text):
         st.error("No Markdown is provided. Upload a file or paste course content first.")
-    elif not model_name.strip():
+    elif provider == "ollama" and not selected_model.strip():
         st.error("Select an Ollama model.")
+    elif provider == "llamacpp" and not selected_model:
+        st.error("Add a GGUF model to the models folder before using llama.cpp.")
     else:
-        with st.spinner("Analyzing course with local Ollama model..."):
+        with st.spinner(f"Analyzing course with {provider_label}..."):
             try:
-                st.session_state["result"] = analyze_course(markdown_text, model_name.strip())
+                model = selected_model.strip() if provider == "ollama" else None
+                st.session_state["result"] = analyze_course(markdown_text, provider, model)
                 st.session_state["error"] = ""
             except RuntimeError as exc:
                 st.session_state["result"] = None
