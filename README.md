@@ -118,6 +118,28 @@ Start llama.cpp server manually:
 .\llama.cpp\llama-server.exe -m .\models\qwen2.5-7b-instruct-q4_k_m.gguf --host 127.0.0.1 --port 8080 --alias qwen2.5-7b-instruct-q4_k_m.gguf -c 4096 -ngl 99 --flash-attn auto
 ```
 
+Or start llama.cpp and CourseScope together:
+
+```powershell
+.\run_app.ps1 -SkipOllama -StartLlamaCpp -LlamaModelPath .\models\Qwen2.5-7B-Instruct-Q4_K_M.gguf
+```
+
+The plain `.\run_app.ps1` command starts Ollama by default. If you select
+`llama.cpp` in the app after starting only Ollama, CourseScope will show:
+
+```text
+llama.cpp server is not running. Start llama-server and try again.
+```
+
+Run the command above, or start `llama-server.exe` manually on port `8080`,
+then select `llama.cpp` in the app.
+
+For a faster but lower-quality local test, use the smaller GGUF model:
+
+```powershell
+.\run_app.ps1 -SkipOllama -StartLlamaCpp -LlamaModelPath .\models\qwen2.5-0.5b-instruct-q4_0.gguf
+```
+
 In the app, select:
 
 ```text
@@ -209,7 +231,7 @@ If the `PROCESSOR` column shows `100% CPU`, check the Ollama server log at:
 
 1. Upload a Markdown course file, or paste course content into the text area.
 2. Edit the Markdown if needed.
-3. Select one of your locally installed Ollama models.
+3. Select a provider and one of your locally installed models.
 4. Click **Analyze Course**.
 5. Review the structured result and raw JSON.
 6. Download the result as JSON or as a Markdown report.
@@ -267,6 +289,7 @@ The app shows clear errors when:
 
 - No Markdown is provided
 - Ollama is not running
+- llama.cpp is not running
 - The selected model is not installed
 - The model returns invalid JSON
 
